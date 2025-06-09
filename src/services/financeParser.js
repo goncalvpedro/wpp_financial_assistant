@@ -1,8 +1,5 @@
-// src/services/financeParser.js
-
 const { prisma } = require("../db/index");
 const { parseISO, isValid } = require("date-fns");
-const { utcToZonedTime } = require("date-fns");
 
 const saveTransaction = async (phone, transactionData) => {
   const { amount, type, category, description, date } = transactionData;
@@ -22,35 +19,37 @@ const saveTransaction = async (phone, transactionData) => {
   if (typeof description !== "string") {
     throw new Error("Descrição inválida.");
   }
+
   const parsed = parseISO(date);
   if (!isValid(parsed)) {
     throw new Error("Data inválida. Use o formato ISO (YYYY-MM-DD).");
   }
 
-  const zonedDate = utcToZonedTime(parsed, "America/Sao_Paulo");
+  const zonedDate = new Date(parsed.getTime() - 3 * 60 * 60 * 1000);
 
   try {
-    const { user, transaction } = await prisma.$transaction(async (tx) => {
+    const { transaction } = await prisma.$transaction(async (tx) => {
       const user = await tx.user.upsert({
-        where: { phone },
+        where:  { phone },
         update: {},
         create: { phone },
       });
 
       const txCreated = await tx.transaction.create({
         data: {
-          userId: user.id,
+          user_id:      user.id,
           amount,
           type,
           category,
           description,
-          date: zonedDate,
+          date:         zonedDate,
         },
       });
 
-      return { user, transaction: txCreated };
+      return { transaction: txCreated };
     });
 
+    // 5) formata a data para exibição e retorna mensagem
     const dateFormatted = transaction.date.toLocaleDateString("pt-BR");
     return `Registrado ${transaction.amount} BRL de ${transaction.type} em ${transaction.category} na data ${dateFormatted}.`;
   } catch (error) {

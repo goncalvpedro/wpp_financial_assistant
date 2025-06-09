@@ -9,7 +9,7 @@ const handleQuery = async (phone, queryData) => {
   const { dateFrom, dateTo, metric } = queryData;
   const transactions = await prisma.transaction.findMany({
     where: {
-      userId: user.id,
+      user_id: user.id,
       date: { gte: new Date(dateFrom), lte: new Date(dateTo) },
     },
   });
