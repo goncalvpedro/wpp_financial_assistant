@@ -1,16 +1,53 @@
-const { OpenAI } = require('openai');
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const { Configuration, OpenAIApi } = require('openai');
+const { OPENAI_API_KEY, LLM_MODEL } = require('../config');
 
-const parseUserInput = async (message) => {
-  const today = new Date().toISOString().split('T')[0];
-  const prompt = `You are a financial assistant. Given the user's message, output a JSON with one of two formats. If it's a financial transaction, output:{\"intent\":\"transaction\",\"amount\":number,\"type\":\"income\" or \"expense\",\"category\":string,\"description\":string,\"date\":\"YYYY-MM-DD\"}. If it's a financial query, output:{\"intent\":\"query\",\"metric\":\"expense\", \"income\", or \"balance\",\"dateFrom\":\"YYYY-MM-DD\",\"dateTo\":\"YYYY-MM-DD\"}. Assume today's date is ${today}. Only output the JSON. Message: "${message}"`;
+class GPTService {
+  constructor() {
+    const cfg = new Configuration({ apiKey: OPENAI_API_KEY });
+    this.client = new OpenAIApi(cfg);
+    this.model = LLM_MODEL;
+  }
 
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4.1-nano',
-    messages: [{ role: 'user', content: prompt }],
-  });
+  // Extract structured transaction data
+  async parseTransaction(text) {
+    const prompt = `
+You are a financial assistant. Extract from the user's message the following JSON:
+{
+  amount: number,
+  currency: string,
+  date: string (YYYY-MM-DD),
+  note: string,
+  category: string
+}
+User message: "${text}"
+Respond with JSON only.`;
 
-  return JSON.parse(response.choices[0].message.content);
-};
+    const res = await this.client.createChatCompletion({
+      model: this.model,
+      messages: [
+        { role: 'system', content: 'You extract financial transactions.' },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0
+    });
 
-module.exports = { parseUserInput };
+    return JSON.parse(res.data.choices[0].message.content);
+  }
+
+  // Classify user message as 'transaction' or 'balance_query'
+  async classifyMessage(text) {
+    const prompt = `
+Classify the following message as either a "transaction" or "balance_query". Respond with exactly one word:
+
+Message: "${text}"
+`;
+    const res = await this.client.createChatCompletion({
+      model: this.model,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0
+    });
+    return res.data.choices[0].message.content.trim().toLowerCase();
+  }
+}
+
+module.exports = GPTService;
